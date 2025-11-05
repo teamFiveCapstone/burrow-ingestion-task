@@ -17,4 +17,5 @@ docker compose up
 
 # Chunking and Embedding with Llamaindex
 
-
+# Database with Pinecone 
+- creates index for you if it doesnt already exist
