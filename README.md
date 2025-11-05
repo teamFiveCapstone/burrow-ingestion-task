@@ -1,13 +1,22 @@
+Un comment out the docling code in main.py first
 
+Create .env including:
 
-# Parsing with Docling
+```
+OPENAI_API_KEY=123
+PINECONE_API_KEY=abc
+```
 
-# Chunking => Chonkie and Llamaindex
+Run
 
-- make sure to comment out the one you dont wanna use
-- dont forget to comment out parsing code once doc has been parsed if you want to try different chunking types
-
-Then run
 ```
 docker compose up
 ```
+
+# Parsing with Docling
+
+# Chunking and Embedding with Llamaindex
+
+# Database with Pinecone
+
+- creates index name lion for you if it doesnt already exist
