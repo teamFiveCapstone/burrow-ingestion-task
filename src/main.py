@@ -9,14 +9,39 @@ from pinecone import Pinecone, ServerlessSpec
 from dotenv import load_dotenv
 import os
 import requests
+import boto3
+import tempfile
+import shutil
 
 # Load environment variables from .env file
 load_dotenv()
 
-def main (file_path):
+def download_from_s3(bucket_name, s3_key):
+    """Download file from S3 to temporary directory and return local path"""
+    s3_client = boto3.client('s3')
+
+    # Extract filename from S3 key
+    filename = os.path.basename(s3_key)
+
+    # Create temporary file
+    temp_dir = tempfile.mkdtemp()
+    local_path = os.path.join(temp_dir, filename)
+
+    # Download file from S3
+    s3_client.download_file(bucket_name, s3_key, local_path)
+
+    return local_path
+
+def main(bucket_name, s3_key):
+    # Download file from S3 to temporary location
+    file_path = download_from_s3(bucket_name, s3_key)
+
     connection_string = "http://host.docker.internal:3000/v1/api/bucketconfig"
-    file_dir = os.path.dirname(file_path)
-    folder_path_for_query = os.path.basename(file_dir) if file_dir else "wild_animals"  # Extract "wild_animals" from path
+    # Extract folder name from S3 key instead of local file path
+    s3_dir = os.path.dirname(s3_key)
+    print("!!!!!!!!!!!!!", s3_dir)
+    print("!!!!!!!!!!!!!KEYYYYY", s3_key)
+    folder_path_for_query = os.path.basename(s3_dir) if s3_dir else "wild_animals"
 
     try:
         response = requests.get(f"{connection_string}/{folder_path_for_query}")
@@ -47,9 +72,12 @@ def main (file_path):
     
     filename_with_extension = os.path.basename(file_path)
     filename_without_extension = os.path.splitext(filename_with_extension)[0]
-    md_file_path = f"../files/{folder_path_for_query}/{filename_without_extension}.md"
 
-    # Code to create md file for parse file 
+    # Create temporary md file
+    temp_md_dir = tempfile.mkdtemp()
+    md_file_path = os.path.join(temp_md_dir, f"{filename_without_extension}.md")
+
+    # Code to create md file for parse file
     with open(md_file_path, "w", encoding="utf-8") as f:
         f.write(parsed_md )
 
@@ -95,6 +123,32 @@ def main (file_path):
     # Ingest directly into vector db
     pipeline.run(documents=file_md)
 
-# main("../files/wild_animals/lion.pdf")
-main("../files/domestic_animals/cat.pdf")
-# main("../files/lion.pdf")
+    # Cleanup temporary files
+    temp_pdf_dir = os.path.dirname(file_path)
+    temp_md_dir = os.path.dirname(md_file_path)
+
+    try:
+        shutil.rmtree(temp_pdf_dir)
+        shutil.rmtree(temp_md_dir)
+    except Exception as e:
+        print(f"Warning: Could not clean up temporary files: {e}")
+
+# Example usage:
+bucket_name = os.environ["S3_BUCKET_NAME"]
+s3_key = os.environ["S3_OBJECT_KEY"]
+print(f"Trying to download: s3://{bucket_name}/{s3_key}")
+
+# List bucket contents to debug
+s3_client = boto3.client('s3')
+try:
+    response = s3_client.list_objects_v2(Bucket=bucket_name)
+    print(f"Files in bucket '{bucket_name}':")
+    if 'Contents' in response:
+        for obj in response['Contents']:
+            print(f"  - {obj['Key']}")
+    else:
+        print("  (bucket is empty)")
+except Exception as e:
+    print(f"Error listing bucket: {e}")
+
+main(bucket_name, s3_key)
