@@ -12,6 +12,7 @@ import requests
 import boto3
 import tempfile
 import shutil
+import json
 
 # Load environment variables from .env file
 load_dotenv()
@@ -33,8 +34,10 @@ def download_from_s3(bucket_name, s3_key):
     return local_path
 
 def main(bucket_name, s3_key):
-    print(f"Pinecone api key: {os.environ["PINECONE_API_KEY"]}")
-    print(f"Openapi api key: {os.environ["OPENAI_API_KEY"]}")
+    print(f'Whats my os environ bro: {os.environ["PINECONE_API_KEY"]}')
+    data = json.loads(os.environ["PINECONE_API_KEY"])
+    print(f'Pinecone key: {data["PINECONE_API_KEY"]}')
+    print(data)
 
     # Download file from S3 to temporary location
     file_path = download_from_s3(bucket_name, s3_key)
@@ -89,7 +92,8 @@ def main(bucket_name, s3_key):
     file_md = SimpleDirectoryReader(input_files=[md_file_path]).load_data()
 
     # Initialize connection to Pinecone
-    pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+    pc = Pinecone(api_key=data["PINECONE_API_KEY"])
+    
     print("successfully created pinecone instance")
 
     # Get or create index (text-embedding-3-small has 1536 dimensions)
@@ -111,7 +115,10 @@ def main(bucket_name, s3_key):
         namespace=namespace
     )
 
-    embed_model = OpenAIEmbedding(model="text-embedding-3-small")
+    embed_model = OpenAIEmbedding(
+        model="text-embedding-3-small",
+        api_key=data["OPENAI_API_KEY"]
+        )
 
     pipeline = IngestionPipeline(
         transformations=[
@@ -137,6 +144,10 @@ def main(bucket_name, s3_key):
 # Example usage:
 bucket_name = os.environ["S3_BUCKET_NAME"]
 s3_key = os.environ["S3_OBJECT_KEY"]
+print(f"bucket_name: {bucket_name}")
+print(f"s3_key: {s3_key}")
+#bucket_name = "wild-cats-pipeline"
+#s3_key = "wild-cats-pipeline/African-lion.pdf"
 print(f"Trying to download: s3://{bucket_name}/{s3_key}")
 
 # List bucket contents to debug

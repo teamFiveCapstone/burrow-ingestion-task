@@ -6,4 +6,4 @@ pinecone
 openai
 python-dotenv
 requests
-boto3
+boto3[s3]
