@@ -37,3 +37,9 @@ docker tag quick-test:latest <ecr uri>
 ```
 docker push <ecr uri>
 ```
+
+Random.) One step command after logged in for windows
+
+```
+docker buildx build --platform linux/arm64 -t <your_ecr_repo_url>:latest --push .
+```

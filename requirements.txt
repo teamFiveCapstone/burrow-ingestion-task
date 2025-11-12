@@ -1,9 +1,20 @@
-docling
-llama-index
-llama-index-embeddings-openai
-llama-index-vector-stores-pinecone
-pinecone
-openai
+# --- Core ---
 python-dotenv
-requests
-boto3[s3]
+boto3
+s3fs                  
+
+# --- LlamaIndex core ---
+llama-index
+llama-index-core
+
+# --- Docling integration ---
+docling
+llama-index-readers-docling
+
+# --- Pinecone integration ---
+pinecone-client
+llama-index-vector-stores-pinecone
+
+# --- Embeddings / OpenAI ---
+openai
+llama-index-embeddings-openai
