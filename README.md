@@ -1,22 +1,39 @@
-Create .env including:
-
-Make sure you have the AWS cli installed and connect to your AWS account
+1.) Install aws cli(for mac)
 
 ```
-OPENAI_API_KEY=123
-PINECONE_API_KEY=abc
+curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
 ```
 
-Run
-
 ```
-docker compose up
+sudo installer -pkg ./AWSCLIV2.pkg -target /
 ```
 
-# Parsing with Docling
+2.) Sign into aws account through aws cli
 
-# Chunking and Embedding with Llamaindex
+```
+aws configure
+```
 
-# Database with Pinecone
+3.) Connect docker login to aws ecr login
 
-- creates index name lion for you if it doesnt already exist
+```
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ecr uri>
+```
+
+4.) Create docker image to upload to ecr
+
+```
+docker build -t quick-test --platform linux/amd64 .
+```
+
+5.) Connect docker image to ecr uri
+
+```
+docker tag quick-test:latest <ecr uri>
+```
+
+6.) Push image to ecr uri
+
+```
+docker push <ecr uri>
+```
