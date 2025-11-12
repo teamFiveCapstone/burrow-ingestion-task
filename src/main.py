@@ -10,9 +10,7 @@ from llama_index.core.ingestion import IngestionPipeline
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
 
-# -----------------------
 # Load environment
-# -----------------------
 load_dotenv()
 
 bucket_name = os.environ["S3_BUCKET_NAME"]
@@ -20,9 +18,7 @@ s3_key = os.environ["S3_OBJECT_KEY"]
 print(f"bucket_name: {bucket_name}")
 print(f"s3_key: {s3_key}")
 
-# -----------------------
 # Create presigned S3 URL
-# -----------------------
 s3 = boto3.client("s3", region_name="us-east-1")
 presigned_url = s3.generate_presigned_url(
     ClientMethod="get_object",
@@ -30,9 +26,7 @@ presigned_url = s3.generate_presigned_url(
     ExpiresIn=3600,  # 1 hour
 )
 
-# -----------------------
 # Main pipeline
-# -----------------------
 def main(bucket_name, s3_key):
     # Load Pinecone + OpenAI keys from JSON env var
     creds = json.loads(os.environ["PINECONE_API_KEY"])
@@ -43,12 +37,10 @@ def main(bucket_name, s3_key):
     # Step 1: Read + convert document to Markdown
     reader = DoclingReader(export_type="markdown")
     docs_md = reader.load_data(presigned_url)
-    print(f"Loaded {len(docs_md)} document(s) from Docling.")
 
     # Step 2: Parse Markdown into nodes
     node_parser = MarkdownNodeParser()
     nodes = node_parser.get_nodes_from_documents(docs_md)
-    print(f"Parsed {len(nodes)} nodes from Markdown.")
 
     # Step 3: Initialize Pinecone
     pc = Pinecone(api_key=creds["PINECONE_API_KEY"])
@@ -80,8 +72,6 @@ def main(bucket_name, s3_key):
     pipeline.run(nodes=nodes)
     print("Ingestion complete — data stored in Pinecone.")
 
-# -----------------------
 # Run
-# -----------------------
 if __name__ == "__main__":
     main(bucket_name, s3_key)
