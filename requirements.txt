@@ -1,13 +1,7 @@
-# --- AWS ---
-boto3
-
 # --- LlamaIndex core ---
 llama-index
 llama-index-core
-
-# --- Docling integration ---
-docling
-llama-index-readers-docling
+llama-index-readers-s3
 
 # --- Pinecone integration ---
 pinecone-client

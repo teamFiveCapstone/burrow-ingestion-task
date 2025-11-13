@@ -1,22 +1,13 @@
-import os, json, boto3
-from llama_index.readers.docling import DoclingReader
-from llama_index.core.node_parser import MarkdownNodeParser
-from llama_index.embeddings.openai import OpenAIEmbedding
+import os, json
+from llama_index.readers.s3 import S3Reader
+from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.ingestion import IngestionPipeline
+from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
 
-# Create variables from event bridge
 bucket_name = os.environ["S3_BUCKET_NAME"]
 s3_key = os.environ["S3_OBJECT_KEY"]
-
-# Create presigned S3 URL
-s3 = boto3.client("s3", region_name="us-east-1")
-presigned_url = s3.generate_presigned_url(
-    ClientMethod="get_object",
-    Params={"Bucket": bucket_name, "Key": s3_key},
-    ExpiresIn=3600,  # 1 hour
-)
 
 # Main pipeline
 def main(bucket_name, s3_key):
@@ -26,13 +17,20 @@ def main(bucket_name, s3_key):
     namespace = "lion"
     index_name = "lion"
 
-    # Step 1: Read + convert document to Markdown
-    reader = DoclingReader(export_type="markdown")
-    docs_md = reader.load_data(presigned_url)
+    # Step 1: Read + convert document
+    reader = S3Reader(
+        bucket=bucket_name,
+        key=s3_key,
+    )
 
-    # Step 2: Parse Markdown into nodes
-    node_parser = MarkdownNodeParser()
-    nodes = node_parser.get_nodes_from_documents(docs_md)
+    documents = reader.load_data()
+
+    # Step 2: Create sentence splitter
+    splitter = SentenceSplitter(
+        chunk_size=800,
+        chunk_overlap=120,
+        include_metadata=True,
+    )
 
     # Step 3: Initialize Pinecone
     pc = Pinecone(api_key=creds["PINECONE_API_KEY"])
@@ -56,13 +54,16 @@ def main(bucket_name, s3_key):
 
     # Step 5: Ingestion pipeline
     pipeline = IngestionPipeline(
-        transformations=[embed_model],
+        transformations=[
+            splitter,
+            embed_model,
+        ],
         vector_store=vector_store,
     )
 
     # Step 6: Run pipeline
-    pipeline.run(nodes=nodes)
-    print("Ingestion complete — data stored in Pinecone.")
+    nodes = pipeline.run(documents=documents)
+    print(f"Pipeline produced {len(nodes)} nodes")
 
 # Run
 if __name__ == "__main__":
