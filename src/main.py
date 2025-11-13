@@ -1,8 +1,4 @@
-import os
-import json
-import boto3
-from dotenv import load_dotenv
-
+import os, json, boto3
 from llama_index.readers.docling import DoclingReader
 from llama_index.core.node_parser import MarkdownNodeParser
 from llama_index.embeddings.openai import OpenAIEmbedding
@@ -10,13 +6,9 @@ from llama_index.core.ingestion import IngestionPipeline
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone, ServerlessSpec
 
-# Load environment
-load_dotenv()
-
+# Create variables from event bridge
 bucket_name = os.environ["S3_BUCKET_NAME"]
 s3_key = os.environ["S3_OBJECT_KEY"]
-print(f"bucket_name: {bucket_name}")
-print(f"s3_key: {s3_key}")
 
 # Create presigned S3 URL
 s3 = boto3.client("s3", region_name="us-east-1")

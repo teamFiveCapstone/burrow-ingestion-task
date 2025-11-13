@@ -1,7 +1,5 @@
-# --- Core ---
-python-dotenv
+# --- AWS ---
 boto3
-s3fs                  
 
 # --- LlamaIndex core ---
 llama-index
