@@ -1,7 +1,5 @@
 # --- Core ---
-python-dotenv
 boto3
-s3fs                  
 
 # --- LlamaIndex core ---
 llama-index
@@ -11,9 +9,8 @@ llama-index-core
 docling
 llama-index-readers-docling
 
-# --- Pinecone integration ---
-pinecone-client
-llama-index-vector-stores-pinecone
+# --- Open Search integration ---
+llama-index-vector-stores-opensearch
 
 # --- Embeddings / OpenAI ---
 openai

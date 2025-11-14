@@ -43,3 +43,7 @@ Random.) One step command after logged in for windows
 ```
 docker buildx build --platform linux/arm64 -t <your_ecr_repo_url>:latest --push .
 ```
+
+```
+docker buildx build -t 908860991626.dkr.ecr.us-east-1.amazonaws.com/ingestion-opensearch --push .
+```
