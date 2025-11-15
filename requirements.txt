@@ -10,6 +10,7 @@ docling
 llama-index-readers-docling
 
 # --- Open Search integration ---
+opensearch-py
 llama-index-vector-stores-opensearch
 
 # --- Embeddings / OpenAI ---
