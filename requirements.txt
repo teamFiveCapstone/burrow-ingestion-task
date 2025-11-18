@@ -1,20 +1,19 @@
 # --- Core ---
-python-dotenv
 boto3
-s3fs                  
+s3fs
+requests-aws4auth
 
-# --- LlamaIndex core ---
-llama-index
-llama-index-core
+# --- LangChain ---
+langchain
 
 # --- Docling integration ---
 docling
-llama-index-readers-docling
+langchain-docling
 
-# --- Pinecone integration ---
-pinecone-client
-llama-index-vector-stores-pinecone
+# --- OpenSearch integration ---
+opensearch-py
+langchain-community
 
 # --- Embeddings / OpenAI ---
 openai
-llama-index-embeddings-openai
+langchain-openai

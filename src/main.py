@@ -1,77 +1,107 @@
-import os
-import json
-import boto3
-from dotenv import load_dotenv
+import os, json, boto3
+from requests_aws4auth import AWS4Auth
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import OpenSearchVectorSearch
+from langchain_docling import DoclingLoader
 
-from llama_index.readers.docling import DoclingReader
-from llama_index.core.node_parser import MarkdownNodeParser
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.core.ingestion import IngestionPipeline
-from llama_index.vector_stores.pinecone import PineconeVectorStore
-from pinecone import Pinecone, ServerlessSpec
+def main():
+    # Step 1: Get env variables
+    bucket_name = os.environ["S3_BUCKET_NAME"]
+    s3_key = os.environ["S3_OBJECT_KEY"]
+    creds = json.loads(os.environ["PINECONE_API_KEY"])  # assumes JSON with OPENAI_API_KEY
 
-# Load environment
-load_dotenv()
+    # Step 2: Create a presigned S3 URL for document
+    s3 = boto3.client("s3", region_name="us-east-1")
+    presigned_url = s3.generate_presigned_url(
+        ClientMethod="get_object",
+        Params={"Bucket": bucket_name, "Key": s3_key},
+        ExpiresIn=3600,
+    )
 
-bucket_name = os.environ["S3_BUCKET_NAME"]
-s3_key = os.environ["S3_OBJECT_KEY"]
-print(f"bucket_name: {bucket_name}")
-print(f"s3_key: {s3_key}")
+    # Step 3: Read + Chunk document
+    loader = DoclingLoader(file_path=presigned_url)
+    chunks = loader.load()
 
-# Create presigned S3 URL
-s3 = boto3.client("s3", region_name="us-east-1")
-presigned_url = s3.generate_presigned_url(
-    ClientMethod="get_object",
-    Params={"Bucket": bucket_name, "Key": s3_key},
-    ExpiresIn=3600,  # 1 hour
-)
+    # Step 4: Connect to OpenSearch Service
+    region = "us-east-1"
+    service = "es"
 
-# Main pipeline
-def main(bucket_name, s3_key):
-    # Load Pinecone + OpenAI keys from JSON env var
-    creds = json.loads(os.environ["PINECONE_API_KEY"])
-    
-    namespace = "lion"
-    index_name = "lion"
+    credentials = boto3.Session().get_credentials()
+    awsauth = AWS4Auth(
+        credentials.access_key,
+        credentials.secret_key,
+        region,
+        service,
+        session_token=credentials.token,
+    )
 
-    # Step 1: Read + convert document to Markdown
-    reader = DoclingReader(export_type="markdown")
-    docs_md = reader.load_data(presigned_url)
+    opensearch_host = "search-burrow-domain-mno6g2tea56zkyb6k2bhhsl7tm.us-east-1.es.amazonaws.com"
 
-    # Step 2: Parse Markdown into nodes
-    node_parser = MarkdownNodeParser()
-    nodes = node_parser.get_nodes_from_documents(docs_md)
+    vector_client = OpenSearch(
+        hosts=[{"host": opensearch_host, "port": 443}],
+        http_auth=awsauth,
+        use_ssl=True,
+        verify_certs=True,
+        http_compress=True,
+        connection_class=RequestsHttpConnection,
+    )
 
-    # Step 3: Initialize Pinecone
-    pc = Pinecone(api_key=creds["PINECONE_API_KEY"])
-    try:
-        pc.create_index(
-            index_name,
-            dimension=1536,
-            spec=ServerlessSpec(cloud="aws", region="us-east-1"),
-        )
-    except Exception:
-        print("Index already exists — skipping creation.")
+    # Step 5: Create the index (k-NN enabled, lucene + L2)
+    index_name = "burrow-index"
+    index_body = {
+        "settings": {
+            "index": {
+                "knn": True
+            }
+        },
+        "mappings": {
+            "properties": {
+                "vector_field": {
+                    "type": "knn_vector",
+                    "dimension": 1536,
+                    "method": {
+                        "engine": "lucene",
+                        "name": "hnsw",
+                        "space_type": "l2",
+                    },
+                }
+            }
+        },
+    }
 
-    pinecone_index = pc.Index(index_name)
-    vector_store = PineconeVectorStore(pinecone_index=pinecone_index, namespace=namespace)
+    if not vector_client.indices.exists(index=index_name):
+        vector_client.indices.create(index=index_name, body=index_body)
 
-    # Step 4: Embeddings model
-    embed_model = OpenAIEmbedding(
+    # Step 6: Embeddings model (normalized => cosine via L2)
+    embeddings = OpenAIEmbeddings(
         model="text-embedding-3-small",
-        api_key=creds["OPENAI_API_KEY"]
+        api_key=creds["OPENAI_API_KEY"],
     )
 
-    # Step 5: Ingestion pipeline
-    pipeline = IngestionPipeline(
-        transformations=[embed_model],
-        vector_store=vector_store,
+    # Step 7: Connect to OpenSearch vector index via LangChain
+    opensearch_url = f"https://{opensearch_host}"
+
+    vector_store = OpenSearchVectorSearch(
+        opensearch_url=opensearch_url,
+        index_name=index_name,
+        embedding_function=embeddings,
+        http_auth=awsauth,
+        use_ssl=True,
+        verify_certs=True,
+        http_compress=True,
+        connection_class=RequestsHttpConnection,
     )
 
-    # Step 6: Run pipeline
-    pipeline.run(nodes=nodes)
-    print("Ingestion complete — data stored in Pinecone.")
+    # Step 8: Load chunks into vector store
+    texts = [doc.page_content for doc in chunks]
+    metadatas = [doc.metadata for doc in chunks]
 
-# Run
+    vector_store.add_texts(
+        texts=texts,
+        metadatas=metadatas,
+    )
+
+
 if __name__ == "__main__":
-    main(bucket_name, s3_key)
+    main()
