@@ -40,7 +40,7 @@ def main():
     bucket_name = os.environ["S3_BUCKET_NAME"]
     s3_key = os.environ["S3_OBJECT_KEY"]
     creds = json.loads(os.environ["PINECONE_API_KEY"])
-    table_name = "burrow-table"      # you can rename this as you like
+    table_name = "burrow_table"      # llamaindex makes this data_burrow_table
     embed_dim = 1536   
 
     # Step 2: Create presigned S3 URL
