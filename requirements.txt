@@ -1,23 +1,12 @@
 # --- Core ---
-python-dotenv
 boto3
-s3fs                  
+psycopg2-binary               
 
 # --- LlamaIndex core ---
-llama-index
 llama-index-core
-
-# --- Docling integration ---
-docling
 llama-index-readers-docling
-
-# --- Pinecone integration ---
-pinecone-client
-llama-index-vector-stores-pinecone
-
-# --- Embeddings / OpenAI ---
-openai
 llama-index-embeddings-openai
+llama-index-vector-stores-postgres
 
-# --- Aurora ---
-psycopg2-binary
+# --- Docling ---
+docling

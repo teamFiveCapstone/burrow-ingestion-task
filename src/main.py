@@ -1,151 +1,91 @@
-import os
-import json
-import boto3
-from dotenv import load_dotenv
-
-import psycopg2
-from openai import OpenAI
-
+import os, json, boto3, psycopg2
 from llama_index.readers.docling import DoclingReader
 from llama_index.core.node_parser import MarkdownNodeParser
 from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.core.ingestion import IngestionPipeline
-from llama_index.vector_stores.pinecone import PineconeVectorStore
-from pinecone import Pinecone, ServerlessSpec
 
-
-# ------------------------------------------------------------
-# Aurora DB CONFIG (hard-coded for dev)
-# ------------------------------------------------------------
+# Aurora DB CONFIG (dev)
 DB_HOST = "burrow-zach.cluster-cwxgyacqyoae.us-east-1.rds.amazonaws.com"
 DB_PORT = 5432
 DB_NAME = "postgres"
 DB_USER = "postgres"
-DB_PASSWORD = "password"     # dev only, don't commit to public repos
+DB_PASSWORD = "password"  # dev only
 
-
-# ------------------------------------------------------------
-# SMOKE TEST: Aurora DB connection
-# ------------------------------------------------------------
-def test_db_connection():
-    print(f"\nTesting DB connection to {DB_HOST}:{DB_PORT}/{DB_NAME} ...")
-
+# Helpers: Create extensions for postgres
+def ensure_pgvector_extension():
+    """Idempotently install pgvector extension (vector) if missing."""
+    print("Ensuring pgvector extension is installed...")
     conn = psycopg2.connect(
         host=DB_HOST,
         port=DB_PORT,
         dbname=DB_NAME,
         user=DB_USER,
         password=DB_PASSWORD,
-        connect_timeout=60
+        connect_timeout=60,
     )
-
+    conn.autocommit = True  # required for CREATE EXTENSION
     cur = conn.cursor()
-    cur.execute("SELECT 1;")
-    row = cur.fetchone()
-
-    print("DB test row:", row)
+    cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
     cur.close()
     conn.close()
+    print("pgvector extension ready.\n")
 
-    print("DB connection OK!\n")
+# MAIN PIPELINE
+def main():
+    # Step 0: Call helpers
+    ensure_pgvector_extension()
 
+    # Step 1: Load environment variables
+    bucket_name = os.environ["S3_BUCKET_NAME"]
+    s3_key = os.environ["S3_OBJECT_KEY"]
+    creds = json.loads(os.environ["PINECONE_API_KEY"])
+    table_name = "burrow-table"      # you can rename this as you like
+    embed_dim = 1536   
 
-# ------------------------------------------------------------
-# SMOKE TEST: OpenAI connectivity
-# ------------------------------------------------------------
-def test_openai_connection(creds: dict):
-    print("Testing OpenAI embeddings...")
-
-    client = OpenAI(api_key=creds["OPENAI_API_KEY"])
-    resp = client.embeddings.create(
-        model="text-embedding-3-small",
-        input="hello from ECS ingestion task",
+    # Step 2: Create presigned S3 URL
+    s3 = boto3.client("s3", region_name="us-east-1")
+    presigned_url = s3.generate_presigned_url(
+        ClientMethod="get_object",
+        Params={"Bucket": bucket_name, "Key": s3_key},
+        ExpiresIn=3600,
     )
 
-    emb = resp.data[0].embedding
-    print("OpenAI embedding length:", len(emb))
-    print("OpenAI call OK!\n")
-
-
-# ------------------------------------------------------------
-# Load environment variables
-# ------------------------------------------------------------
-load_dotenv()
-
-bucket_name = os.environ["S3_BUCKET_NAME"]
-s3_key = os.environ["S3_OBJECT_KEY"]
-
-print(f"bucket_name: {bucket_name}")
-print(f"s3_key: {s3_key}")
-
-# Create presigned S3 URL
-s3 = boto3.client("s3", region_name="us-east-1")
-presigned_url = s3.generate_presigned_url(
-    ClientMethod="get_object",
-    Params={"Bucket": bucket_name, "Key": s3_key},
-    ExpiresIn=3600,
-)
-
-
-# ------------------------------------------------------------
-# MAIN PIPELINE
-# ------------------------------------------------------------
-def main(bucket_name, s3_key):
-
-    # Load Pinecone + OpenAI keys from your JSON env var
-    creds = json.loads(os.environ["PINECONE_API_KEY"])
-
-    # Run smoke tests BEFORE ingestion pipeline
-    test_db_connection()
-    test_openai_connection(creds)
-
-    namespace = "lion"
-    index_name = "lion"
-
-    # Step 1: Read + convert document to Markdown
+    # Step 3: Read + convert document to Markdown
     reader = DoclingReader(export_type="markdown")
     docs_md = reader.load_data(presigned_url)
 
-    # Step 2: Parse Markdown into nodes
+    # Step 4: Parse Markdown into nodes
     node_parser = MarkdownNodeParser()
     nodes = node_parser.get_nodes_from_documents(docs_md)
 
-    # Step 3: Initialize Pinecone
-    pc = Pinecone(api_key=creds["PINECONE_API_KEY"])
-    try:
-        pc.create_index(
-            index_name,
-            dimension=1536,
-            spec=ServerlessSpec(cloud="aws", region="us-east-1"),
-        )
-    except Exception:
-        print("Index already exists — skipping creation.")
-
-    pinecone_index = pc.Index(index_name)
-    vector_store = PineconeVectorStore(
-        pinecone_index=pinecone_index,
-        namespace=namespace
+    # Step 5: Initialize Aurora-backed PGVectorStore
+    vector_store = PGVectorStore.from_params(
+        database=DB_NAME,
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        table_name=table_name,
+        embed_dim=embed_dim,
     )
 
-    # Step 4: OpenAI embedding model for ingestion
+    # Step 6: OpenAI embedding model for ingestion
     embed_model = OpenAIEmbedding(
         model="text-embedding-3-small",
         api_key=creds["OPENAI_API_KEY"],
     )
 
-    # Step 5: Ingestion pipeline
+    # Step 7: Ingestion pipeline
     pipeline = IngestionPipeline(
         transformations=[embed_model],
         vector_store=vector_store,
     )
 
-    # Step 6: Run pipeline
+    # Step 8: Run pipeline
     pipeline.run(nodes=nodes)
-    print("Ingestion complete — data stored in Pinecone.")
+    print("Ingestion complete — data stored in Aurora (pgvector).")
 
-
-# ------------------------------------------------------------
 # ENTRYPOINT
-# ------------------------------------------------------------
 if __name__ == "__main__":
-    main(bucket_name, s3_key)
+    main()
