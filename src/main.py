@@ -25,6 +25,7 @@ def ensure_pgvector_extension_and_drop_old():
     )
     conn.autocommit = True
     cur = conn.cursor()
+    cur.execute("DROP TABLE IF EXISTS data_burrow_table_hybrid;")
     cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
     cur.close()
     conn.close()
@@ -39,7 +40,7 @@ def main():
     bucket_name = os.environ["S3_BUCKET_NAME"]
     s3_key = os.environ["S3_OBJECT_KEY"]
     creds = json.loads(os.environ["PINECONE_API_KEY"])
-    table_name = "burrow_table"      # llamaindex makes this data_burrow_table
+    table_name = "burrow_table_hybrid"      # llamaindex makes this data_burrow_table
     embed_dim = 1024  
 
     # Step 2: Create presigned S3 URL
@@ -62,11 +63,19 @@ def main():
     vector_store = PGVectorStore.from_params(
         database=DB_NAME,
         host=DB_HOST,
+        password=DB_PASSWORD,
         port=DB_PORT,
         user=DB_USER,
-        password=DB_PASSWORD,
         table_name=table_name,
-        embed_dim=embed_dim,
+        embed_dim=embed_dim,  
+        hybrid_search=True,
+        text_search_config="english",
+        hnsw_kwargs={
+            "hnsw_m": 16,
+            "hnsw_ef_construction": 64,
+            "hnsw_ef_search": 40,
+            "hnsw_dist_method": "vector_cosine_ops",
+        },
     )
 
     # Step 6: Bedrock embedding model (Amazon Titan v2)

@@ -1,12 +1,10 @@
 # --- Core ---
 boto3
-psycopg2-binary               
+psycopg2-binary    
+onnxruntime
 
 # --- LlamaIndex core ---
 llama-index-core
 llama-index-readers-docling
 llama-index-embeddings-bedrock
 llama-index-vector-stores-postgres
-
-# --- Docling ---
-docling
