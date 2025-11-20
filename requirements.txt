@@ -5,7 +5,7 @@ psycopg2-binary
 # --- LlamaIndex core ---
 llama-index-core
 llama-index-readers-docling
-llama-index-embeddings-openai
+llama-index-embeddings-bedrock
 llama-index-vector-stores-postgres
 
 # --- Docling ---

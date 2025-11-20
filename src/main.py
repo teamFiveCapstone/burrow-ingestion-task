@@ -1,21 +1,20 @@
 import os, json, boto3, psycopg2
 from llama_index.readers.docling import DoclingReader
 from llama_index.core.node_parser import MarkdownNodeParser
-from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.embeddings.bedrock import BedrockEmbedding
 from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.core.ingestion import IngestionPipeline
 
 # Aurora DB CONFIG (dev)
-DB_HOST = "burrow-zach.cluster-cwxgyacqyoae.us-east-1.rds.amazonaws.com"
+DB_HOST = "burrow-serverless-wilson.cluster-cwxgyacqyoae.us-east-1.rds.amazonaws.com"
 DB_PORT = 5432
-DB_NAME = "postgres"
-DB_USER = "postgres"
-DB_PASSWORD = "password"  # dev only
+DB_NAME = "embeddings"
+DB_USER = "burrow"
+DB_PASSWORD = "capstone"  # dev only
 
 # Helpers: Create extensions for postgres
-def ensure_pgvector_extension():
-    """Idempotently install pgvector extension (vector) if missing."""
-    print("Ensuring pgvector extension is installed...")
+def ensure_pgvector_extension_and_drop_old():
+    print("Ensuring pgvector extension is installed, dropping old tables...")
     conn = psycopg2.connect(
         host=DB_HOST,
         port=DB_PORT,
@@ -24,7 +23,7 @@ def ensure_pgvector_extension():
         password=DB_PASSWORD,
         connect_timeout=60,
     )
-    conn.autocommit = True  # required for CREATE EXTENSION
+    conn.autocommit = True
     cur = conn.cursor()
     cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
     cur.close()
@@ -34,14 +33,14 @@ def ensure_pgvector_extension():
 # MAIN PIPELINE
 def main():
     # Step 0: Call helpers
-    ensure_pgvector_extension()
+    ensure_pgvector_extension_and_drop_old()
 
     # Step 1: Load environment variables
     bucket_name = os.environ["S3_BUCKET_NAME"]
     s3_key = os.environ["S3_OBJECT_KEY"]
     creds = json.loads(os.environ["PINECONE_API_KEY"])
     table_name = "burrow_table"      # llamaindex makes this data_burrow_table
-    embed_dim = 1536   
+    embed_dim = 1024  
 
     # Step 2: Create presigned S3 URL
     s3 = boto3.client("s3", region_name="us-east-1")
@@ -70,10 +69,10 @@ def main():
         embed_dim=embed_dim,
     )
 
-    # Step 6: OpenAI embedding model for ingestion
-    embed_model = OpenAIEmbedding(
-        model="text-embedding-3-small",
-        api_key=creds["OPENAI_API_KEY"],
+    # Step 6: Bedrock embedding model (Amazon Titan v2)
+    embed_model = BedrockEmbedding(
+        model_name="amazon.titan-embed-text-v2:0",
+        region_name="us-east-1",
     )
 
     # Step 7: Ingestion pipeline
