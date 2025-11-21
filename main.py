@@ -23,10 +23,11 @@ from llama_index.core.ingestion import IngestionPipeline
 
 bucket_name = os.environ["S3_BUCKET_NAME"]
 s3_key = os.environ["S3_OBJECT_KEY"]
-table_name = "burrow_table_hybrid"
+table_name = "burrow_table_hybrid2"
 embed_dim = 1024  
 INGESTION_API_TOKEN = os.environ["INGESTION_API_TOKEN"]
-document_id = "a2783f5d-22a9-4088-a1d6-bdc6ec451ad2"
+document_id = s3_key.split('.')[0]
+print(document_id)
 
 DB_HOST = "burrow-serverless-wilson.cluster-cwxgyacqyoae.us-east-1.rds.amazonaws.com"
 DB_PORT = 5432
