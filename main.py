@@ -8,24 +8,36 @@
 #     "llama-index-vector-stores-postgres",
 #     "onnxruntime",
 #     "psycopg2-binary",
+#     "requests",
 # ]
 # ///
 
-import os, json, boto3, psycopg2
+import os, json, boto3, psycopg2, requests
 from llama_index.readers.docling import DoclingReader
 from llama_index.core.node_parser import MarkdownNodeParser
 from llama_index.embeddings.bedrock import BedrockEmbedding
 from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.core.ingestion import IngestionPipeline
 
-# Aurora DB CONFIG (dev)
+# ---------- CONFIG ----------
+
+bucket_name = os.environ["S3_BUCKET_NAME"]
+s3_key = os.environ["S3_OBJECT_KEY"]
+table_name = "burrow_table_hybrid"
+embed_dim = 1024  
+INGESTION_API_TOKEN = os.environ["INGESTION_API_TOKEN"]
+document_id = "a2783f5d-22a9-4088-a1d6-bdc6ec451ad2"
+
 DB_HOST = "burrow-serverless-wilson.cluster-cwxgyacqyoae.us-east-1.rds.amazonaws.com"
 DB_PORT = 5432
 DB_NAME = "embeddings"
 DB_USER = "burrow"
 DB_PASSWORD = "capstone"  # dev only
 
-# Helpers: Create extensions for postgres
+AWS_ALB_URL = "http://rag-lb-970809826.us-east-1.elb.amazonaws.com"
+
+# ---------- HELPERS ----------
+
 def ensure_pgvector_extension_and_drop_old():
     print("Ensuring pgvector extension is installed, dropping old tables...")
     conn = psycopg2.connect(
@@ -38,23 +50,26 @@ def ensure_pgvector_extension_and_drop_old():
     )
     conn.autocommit = True
     cur = conn.cursor()
-    cur.execute("DROP TABLE IF EXISTS data_burrow_table_hybrid;")
     cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
     cur.close()
     conn.close()
     print("pgvector extension ready.\n")
 
-# MAIN PIPELINE
-def main():
-    # Step 0: Call helpers
-    ensure_pgvector_extension_and_drop_old()
+def update_document_status(document_id, status):
+    url = f"{AWS_ALB_URL}/api/documents/{document_id}"
+    headers = {"x-api-token": INGESTION_API_TOKEN }
+    data = {"status": status}
 
-    # Step 1: Load environment variables
-    bucket_name = os.environ["S3_BUCKET_NAME"]
-    s3_key = os.environ["S3_OBJECT_KEY"]
-    creds = json.loads(os.environ["PINECONE_API_KEY"])
-    table_name = "burrow_table_hybrid"      # llamaindex makes this data_burrow_table
-    embed_dim = 1024  
+    print(f"[PATCH] {url} → {status}")
+    resp = requests.patch(url, headers=headers, json=data, timeout=60)
+    print(f"[PATCH] Status Code: {resp.status_code}\nResponse Body: {resp.text}")
+    resp.raise_for_status()
+
+# ---------- MAIN INGESTION LOGIC ----------
+
+def main():
+    # Step 1: Call helpers
+    ensure_pgvector_extension_and_drop_old()
 
     # Step 2: Create presigned S3 URL
     s3 = boto3.client("s3", region_name="us-east-1")
@@ -104,9 +119,36 @@ def main():
     )
 
     # Step 8: Run pipeline
-    pipeline.run(nodes=nodes)
+    pipeline.run(nodes=nodes, num_workers=2)
     print("Ingestion complete — data stored in Aurora (pgvector).")
 
-# ENTRYPOINT
+# ---------- Wrapper ----------
+
+def main_with_status():
+    try:
+        update_document_status(document_id, "running")
+        print('Document running')
+    except Exception as e:
+        print(f"[status] WARNING: failed to set status=running: {e}")
+
+    try:
+        main()
+    except Exception as e:
+        print(f"[ingestion] ERROR: {e}")
+        try:
+            update_document_status(document_id, "failed")
+            print('Document failed')
+        except Exception as e2:
+            print(f"[status] WARNING: failed to set status=failed: {e2}")
+        raise
+    else:
+        try:
+            update_document_status(document_id, "finished")
+            print('Document finished')
+        except Exception as e:
+            print(f"[status] WARNING: failed to set status=finished: {e}")
+
+# ---------- Work Flow ----------
+
 if __name__ == "__main__":
-    main()
+    main_with_status()
