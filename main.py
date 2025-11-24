@@ -12,7 +12,8 @@
 # ]
 # ///
 
-import os, json, boto3, psycopg2, requests
+import os, boto3, psycopg2, requests
+from pathlib import Path
 from llama_index.readers.docling import DoclingReader
 from llama_index.core.node_parser import MarkdownNodeParser
 from llama_index.embeddings.bedrock import BedrockEmbedding
@@ -21,13 +22,13 @@ from llama_index.core.ingestion import IngestionPipeline
 
 # ---------- CONFIG ----------
 
-bucket_name = os.environ["S3_BUCKET_NAME"]
-s3_key = os.environ["S3_OBJECT_KEY"]
-table_name = "burrow_table_hybrid2"
-embed_dim = 1024  
+BUCKET_NAME = os.environ["S3_BUCKET_NAME"]
+S3_KEY = os.environ["S3_OBJECT_KEY"]
+TABLE_NAME = "burrow_table_hybrid2"
+EMBED_DIM = 1024  
 INGESTION_API_TOKEN = os.environ["INGESTION_API_TOKEN"]
-document_id = s3_key.split('.')[0]
-print(document_id)
+DOCUMENT_ID = Path(S3_KEY).stem
+print(DOCUMENT_ID)
 
 DB_HOST = os.environ["DB_HOST"]
 DB_PORT = os.environ["DB_PORT"]
@@ -35,12 +36,12 @@ DB_NAME = os.environ["DB_NAME"]
 DB_USER = os.environ["DB_USER"]
 DB_PASSWORD = os.environ["DB_PASSWORD"]
 
-AWS_ALB_URL = "http://rag-lb-970809826.us-east-1.elb.amazonaws.com"
+ALB_BASE_URL = os.environ["ALB_BASE_URL"]
 
 # ---------- HELPERS ----------
 
-def ensure_pgvector_extension_and_drop_old():
-    print("Ensuring pgvector extension is installed, dropping old tables...")
+def ensure_pgvector_extension():
+    print("Ensuring pgvector extension is installed")
     conn = psycopg2.connect(
         host=DB_HOST,
         port=DB_PORT,
@@ -56,8 +57,8 @@ def ensure_pgvector_extension_and_drop_old():
     conn.close()
     print("pgvector extension ready.\n")
 
-def update_document_status(document_id, status):
-    url = f"{AWS_ALB_URL}/api/documents/{document_id}"
+def update_document_status(status):
+    url = f"{ALB_BASE_URL}/api/documents/{DOCUMENT_ID}"
     headers = {"x-api-token": INGESTION_API_TOKEN }
     data = {"status": status}
 
@@ -70,13 +71,13 @@ def update_document_status(document_id, status):
 
 def main():
     # Step 1: Call helpers
-    ensure_pgvector_extension_and_drop_old()
+    ensure_pgvector_extension()
 
     # Step 2: Create presigned S3 URL
     s3 = boto3.client("s3", region_name="us-east-1")
     presigned_url = s3.generate_presigned_url(
         ClientMethod="get_object",
-        Params={"Bucket": bucket_name, "Key": s3_key},
+        Params={"Bucket": BUCKET_NAME, "Key": S3_KEY},
         ExpiresIn=3600,
     )
 
@@ -95,8 +96,8 @@ def main():
         password=DB_PASSWORD,
         port=DB_PORT,
         user=DB_USER,
-        table_name=table_name,
-        embed_dim=embed_dim,  
+        table_name=TABLE_NAME,
+        embed_dim=EMBED_DIM,  
         hybrid_search=True,
         text_search_config="english",
         hnsw_kwargs={
@@ -127,7 +128,7 @@ def main():
 
 def main_with_status():
     try:
-        update_document_status(document_id, "running")
+        update_document_status("running")
         print('Document running')
     except Exception as e:
         print(f"[status] WARNING: failed to set status=running: {e}")
@@ -137,14 +138,14 @@ def main_with_status():
     except Exception as e:
         print(f"[ingestion] ERROR: {e}")
         try:
-            update_document_status(document_id, "failed")
+            update_document_status("failed")
             print('Document failed')
         except Exception as e2:
             print(f"[status] WARNING: failed to set status=failed: {e2}")
         raise
     else:
         try:
-            update_document_status(document_id, "finished")
+            update_document_status("finished")
             print('Document finished')
         except Exception as e:
             print(f"[status] WARNING: failed to set status=finished: {e}")
