@@ -1,0 +1,84 @@
+# -------------------------
+# BASIC PYTHON IGNORE
+# -------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.log
+*.sqlite
+*.sqlite3
+
+# Byte-compiled / optimized / DLL files
+*.so
+*.dll
+*.dylib
+
+# Virtual environments
+venv/
+.env/
+.venv/
+env/
+pip-wheel-metadata/
+
+# -------------------------
+# BUILD / EDITOR TRASH
+# -------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.cache/
+.idea/
+.vscode/
+*.iml
+
+# -------------------------
+# PYTHON PACKAGE OUTPUT
+# -------------------------
+dist/
+build/
+*.egg-info/
+*.egg/
+
+# -------------------------
+# PROJECT ARTIFACTS
+# -------------------------
+# Don’t include local data or ingestion test files
+data/
+tests/
+tmp/
+temp/
+logs/
+
+# -------------------------
+# GIT / CI FILES
+# -------------------------
+.git
+.gitignore
+.gitattributes
+.github/
+
+# -------------------------
+# DOCKER STUFF
+# -------------------------
+Dockerfile
+docker-compose.yml
+
+# -------------------------
+# ENVIRONMENT / SECRETS
+# -------------------------
+*.env
+.env.*
+.envrc
+secrets/
+credentials/
+.aws/
+
+# -------------------------
+# FRONTEND (just in case)
+# -------------------------
+node_modules/
+build/
