@@ -29,11 +29,11 @@ INGESTION_API_TOKEN = os.environ["INGESTION_API_TOKEN"]
 document_id = s3_key.split('.')[0]
 print(document_id)
 
-DB_HOST = "burrow-serverless-wilson.cluster-cwxgyacqyoae.us-east-1.rds.amazonaws.com"
-DB_PORT = 5432
-DB_NAME = "embeddings"
-DB_USER = "burrow"
-DB_PASSWORD = "capstone"  # dev only
+DB_HOST = os.environ["DB_HOST"]
+DB_PORT = os.environ["DB_PORT"]
+DB_NAME = os.environ["DB_NAME"]
+DB_USER = os.environ["DB_USER"]
+DB_PASSWORD = os.environ["DB_PASSWORD"]
 
 AWS_ALB_URL = "http://rag-lb-970809826.us-east-1.elb.amazonaws.com"
 
