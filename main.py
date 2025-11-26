@@ -5,20 +5,26 @@
 #     "llama-index-core",
 #     "llama-index-embeddings-bedrock",
 #     "llama-index-readers-docling",
+#     "llama-index-node-parser-docling",
 #     "llama-index-vector-stores-postgres",
 #     "onnxruntime",
 #     "psycopg2-binary",
 #     "requests",
+#     "transformers",
 # ]
 # ///
 
 import os, boto3, psycopg2, requests
 from pathlib import Path
 from llama_index.readers.docling import DoclingReader
-from llama_index.core.node_parser import MarkdownNodeParser
+from llama_index.node_parser.docling import DoclingNodeParser
 from llama_index.embeddings.bedrock import BedrockEmbedding
 from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.core.ingestion import IngestionPipeline
+
+from transformers import AutoTokenizer
+from docling.chunking import HybridChunker
+from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTokenizer
 
 # ---------- CONFIG ----------
 
@@ -37,6 +43,9 @@ DB_USER = os.environ["DB_USER"]
 DB_PASSWORD = os.environ["DB_PASSWORD"]
 
 ALB_BASE_URL = os.environ["ALB_BASE_URL"]
+
+MAX_TOKENS = 4096
+TOKENIZER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # ---------- HELPERS ----------
 
@@ -67,6 +76,22 @@ def update_document_status(status):
     print(f"[PATCH] Status Code: {resp.status_code}\nResponse Body: {resp.text}")
     resp.raise_for_status()
 
+def create_hybrid_chunker():
+    print(f"Creating HybridChunker with max_tokens={MAX_TOKENS}")
+
+    tokenizer = HuggingFaceTokenizer(
+        tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_MODEL),
+        max_tokens = MAX_TOKENS
+    )
+
+    chunker = HybridChunker(
+        tokenizer = tokenizer,
+        merge_peers = True
+    )
+
+    print("HybridChunker initialized")
+    return chunker
+
 # ---------- MAIN INGESTION LOGIC ----------
 
 def main():
@@ -81,13 +106,15 @@ def main():
         ExpiresIn=3600,
     )
 
-    # Step 3: Read + convert document to Markdown
-    reader = DoclingReader(export_type="markdown")
-    docs_md = reader.load_data(presigned_url)
+    # Step 3: Read document
+    reader = DoclingReader()
+    docs = reader.load_data(presigned_url)
 
-    # Step 4: Parse Markdown into nodes
-    node_parser = MarkdownNodeParser()
-    nodes = node_parser.get_nodes_from_documents(docs_md)
+    # Step 4: Parse document into nodes
+    hybrid_chunker = create_hybrid_chunker()
+
+    node_parser = DoclingNodeParser(chunker=hybrid_chunker)
+    nodes = node_parser.get_nodes_from_documents(docs)
 
     # Step 5: Initialize Aurora-backed PGVectorStore
     vector_store = PGVectorStore.from_params(
