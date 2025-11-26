@@ -106,8 +106,8 @@ def main():
         ExpiresIn=3600,
     )
 
-    # Step 3: Read document
-    reader = DoclingReader()
+    # Step 3: Read document with JSON export (required for DoclingNodeParser)
+    reader = DoclingReader(export_type=DoclingReader.ExportType.JSON)
     docs = reader.load_data(presigned_url)
 
     # Step 4: Parse document into nodes
