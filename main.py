@@ -43,6 +43,7 @@ DB_USER = os.environ["DB_USER"]
 DB_PASSWORD = os.environ["DB_PASSWORD"]
 
 ALB_BASE_URL = os.environ["ALB_BASE_URL"]
+EVENT_TYPE = os.environ.get("EVENT_TYPE", "Object Created")
 
 MAX_TOKENS = 4096
 TOKENIZER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -92,6 +93,46 @@ def create_hybrid_chunker():
     print("HybridChunker initialized")
     return chunker
 
+def delete_embeddings_for_document():
+    """Delete all embeddings for DOCUMENT_ID from Aurora."""
+    print(f"[DELETE] Deleting embeddings for: {DOCUMENT_ID}")
+
+    vector_store = PGVectorStore.from_params(
+        database=DB_NAME,
+        host=DB_HOST,
+        password=DB_PASSWORD,
+        port=DB_PORT,
+        user=DB_USER,
+        table_name=TABLE_NAME,
+        embed_dim=EMBED_DIM,
+        hybrid_search=True,
+        text_search_config="english",
+    )
+
+    from llama_index.core import VectorStoreIndex
+    index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
+
+    try:
+        # LlamaIndex built-in deletion by ref_doc_id
+        index.delete_ref_doc(DOCUMENT_ID, delete_from_docstore=True)
+        print(f"[DELETE] Deleted nodes for: {DOCUMENT_ID}")
+    except Exception as e:
+        print(f"[DELETE] delete_ref_doc failed: {e}")
+        # Fallback: SQL delete with metadata filter
+        import psycopg2
+        conn = psycopg2.connect(
+            host=DB_HOST, port=DB_PORT,
+            dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD
+        )
+        cur = conn.cursor()
+        sql = f"DELETE FROM data_{TABLE_NAME} WHERE metadata->>'file_name' LIKE %s"
+        cur.execute(sql, (f"%{DOCUMENT_ID}%",))
+        deleted_count = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[DELETE] SQL fallback deleted {deleted_count} rows")
+
 # ---------- MAIN INGESTION LOGIC ----------
 
 def main():
@@ -109,6 +150,10 @@ def main():
     # Step 3: Read document with JSON export (required for DoclingNodeParser)
     reader = DoclingReader(export_type=DoclingReader.ExportType.JSON)
     docs = reader.load_data(presigned_url)
+
+    # Set ref_doc_id for LlamaIndex tracking (enables delete_ref_doc)
+    for doc in docs:
+        doc.id_ = DOCUMENT_ID
 
     # Step 4: Parse document into nodes
     hybrid_chunker = create_hybrid_chunker()
@@ -154,28 +199,52 @@ def main():
 # ---------- Wrapper ----------
 
 def main_with_status():
-    try:
-        update_document_status("running")
-        print('Document running')
-    except Exception as e:
-        print(f"[status] WARNING: failed to set status=running: {e}")
+    """Handle both create and delete events."""
+    is_delete = EVENT_TYPE == "Object Deleted"
 
-    try:
-        main()
-    except Exception as e:
-        print(f"[ingestion] ERROR: {e}")
+    if is_delete:
+        print(f"[DELETE EVENT] Processing: {DOCUMENT_ID}")
         try:
-            update_document_status("failed")
-            print('Document failed')
-        except Exception as e2:
-            print(f"[status] WARNING: failed to set status=failed: {e2}")
-        raise
-    else:
-        try:
-            update_document_status("finished")
-            print('Document finished')
+            update_document_status("deleting")
         except Exception as e:
-            print(f"[status] WARNING: failed to set status=finished: {e}")
+            print(f"[status] WARNING: failed to set deleting: {e}")
+
+        try:
+            delete_embeddings_for_document()
+            update_document_status("deleted")  # Cleanup job will finalize
+            print('[DELETE] Success: embeddings removed')
+        except Exception as e:
+            print(f"[DELETE] ERROR: {e}")
+            try:
+                update_document_status("delete_failed")
+            except:
+                pass
+            raise
+
+    else:
+        # Original CREATE flow
+        try:
+            update_document_status("running")
+            print('Document running')
+        except Exception as e:
+            print(f"[status] WARNING: failed to set status=running: {e}")
+
+        try:
+            main()
+        except Exception as e:
+            print(f"[ingestion] ERROR: {e}")
+            try:
+                update_document_status("failed")
+                print('Document failed')
+            except Exception as e2:
+                print(f"[status] WARNING: failed to set status=failed: {e2}")
+            raise
+        else:
+            try:
+                update_document_status("finished")
+                print('Document finished')
+            except Exception as e:
+                print(f"[status] WARNING: failed to set status=finished: {e}")
 
 # ---------- Work Flow ----------
 
