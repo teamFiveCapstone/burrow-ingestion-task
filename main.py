@@ -97,6 +97,11 @@ def delete_embeddings_for_document():
     """Delete all embeddings for DOCUMENT_ID from Aurora."""
     print(f"[DELETE] Deleting embeddings for: {DOCUMENT_ID}")
 
+    embed_model = BedrockEmbedding(
+        model_name="amazon.titan-embed-text-v2:0",
+        region_name="us-east-1",
+    )
+
     vector_store = PGVectorStore.from_params(
         database=DB_NAME,
         host=DB_HOST,
@@ -110,7 +115,7 @@ def delete_embeddings_for_document():
     )
 
     from llama_index.core import VectorStoreIndex
-    index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
+    index = VectorStoreIndex.from_vector_store(vector_store=vector_store, embed_model=embed_model)
 
     try:
         # LlamaIndex built-in deletion by ref_doc_id
