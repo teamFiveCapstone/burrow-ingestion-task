@@ -30,9 +30,6 @@ from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTok
 
 BUCKET_NAME = os.environ["S3_BUCKET_NAME"]
 S3_KEY = os.environ["S3_OBJECT_KEY"]
-TABLE_NAME = "burrow_table_hybrid2"
-EMBED_DIM = 1024  
-INGESTION_API_TOKEN = os.environ["INGESTION_API_TOKEN"]
 DOCUMENT_ID = Path(S3_KEY).stem
 print(DOCUMENT_ID)
 
@@ -41,8 +38,11 @@ DB_PORT = os.environ["DB_PORT"]
 DB_NAME = os.environ["DB_NAME"]
 DB_USER = os.environ["DB_USER"]
 DB_PASSWORD = os.environ["DB_PASSWORD"]
+TABLE_NAME = "burrow_table_hybrid2"
+EMBED_DIM = 1024  
 
-ALB_BASE_URL = os.environ["ALB_BASE_URL"]
+INGESTION_API_TOKEN = os.environ.get("INGESTION_API_TOKEN")
+ALB_BASE_URL = os.environ.get("ALB_BASE_URL")
 
 MAX_TOKENS = 4096
 TOKENIZER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -67,6 +67,10 @@ def ensure_pgvector_extension():
     print("pgvector extension ready.\n")
 
 def update_document_status(status):
+    if not (ALB_BASE_URL and INGESTION_API_TOKEN):
+        print(f"No Document update occurs.")
+        return
+
     url = f"{ALB_BASE_URL}/api/documents/{DOCUMENT_ID}"
     headers = {"x-api-token": INGESTION_API_TOKEN }
     data = {"status": status}
@@ -92,9 +96,9 @@ def create_hybrid_chunker():
     print("HybridChunker initialized")
     return chunker
 
-# ---------- MAIN INGESTION LOGIC ----------
+# ---------- INGESTION PATH ----------
 
-def main():
+def ingest_core():
     # Step 1: Call helpers
     ensure_pgvector_extension()
 
@@ -109,6 +113,10 @@ def main():
     # Step 3: Read document with JSON export (required for DoclingNodeParser)
     reader = DoclingReader(export_type=DoclingReader.ExportType.JSON)
     docs = reader.load_data(presigned_url)
+
+    for doc in docs:
+        doc.id_ = DOCUMENT_ID
+
 
     # Step 4: Parse document into nodes
     hybrid_chunker = create_hybrid_chunker()
@@ -151,17 +159,15 @@ def main():
     pipeline.run(nodes=nodes, num_workers=2)
     print("Ingestion complete — data stored in Aurora (pgvector).")
 
-# ---------- Wrapper ----------
-
-def main_with_status():
+#Wrapper for Ingestion
+def run_ingest():
     try:
         update_document_status("running")
         print('Document running')
     except Exception as e:
         print(f"[status] WARNING: failed to set status=running: {e}")
-
     try:
-        main()
+        ingest_core()
     except Exception as e:
         print(f"[ingestion] ERROR: {e}")
         try:
@@ -170,14 +176,48 @@ def main_with_status():
         except Exception as e2:
             print(f"[status] WARNING: failed to set status=failed: {e2}")
         raise
-    else:
-        try:
-            update_document_status("finished")
-            print('Document finished')
-        except Exception as e:
-            print(f"[status] WARNING: failed to set status=finished: {e}")
+    try:
+        update_document_status("finished")
+        print('Document finished')
+    except Exception as e:
+        print(f"[status] WARNING: failed to set status=finished: {e}")
+
+# ---------- DELETE PATH ----------
+
+def run_delete():
+    print(f"[delete] Starting delete for DOCUMENT_ID='{DOCUMENT_ID}'")
+
+    print(f"[delete] Initializing PGVectorStore on table '{TABLE_NAME}'")
+    vector_store = PGVectorStore.from_params(
+        database=DB_NAME,
+        host=DB_HOST,
+        password=DB_PASSWORD,
+        port=DB_PORT,
+        user=DB_USER,
+        table_name=TABLE_NAME,
+        embed_dim=EMBED_DIM,  
+        hybrid_search=True,
+        text_search_config="english",
+        hnsw_kwargs={
+            "hnsw_m": 16,
+            "hnsw_ef_construction": 64,
+            "hnsw_ef_search": 40,
+            "hnsw_dist_method": "vector_cosine_ops",
+        },
+    )
+
+    vector_store.delete(ref_doc_id=DOCUMENT_ID)
+    print(f"[delete] Delete complete — all chunks for {DOCUMENT_ID} are removed.")
 
 # ---------- Work Flow ----------
 
 if __name__ == "__main__":
-    main_with_status()
+    mode = os.environ.get("WORKER_MODE", "INGEST").upper()
+    print(f"[worker] WORKER_MODE={mode}")
+
+    if mode == "INGEST":
+        run_ingest()
+    elif mode == "DELETE":
+        run_delete()
+    else:
+        raise ValueError(f"[worker] Unknown WORKER_MODE={mode} (expected 'INGEST' or 'DELETE')")
