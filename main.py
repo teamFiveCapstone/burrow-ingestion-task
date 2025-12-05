@@ -13,7 +13,6 @@
 #     "transformers",
 # ]
 # ///
-
 import os
 import boto3
 import psycopg2
@@ -28,7 +27,6 @@ from transformers import AutoTokenizer
 from docling.chunking import HybridChunker
 from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTokenizer
 from logger import log_info, log_exception
-
 
 BUCKET_NAME = os.environ["S3_BUCKET_NAME"]
 S3_KEY = os.environ["S3_OBJECT_KEY"]
