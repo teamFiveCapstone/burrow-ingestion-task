@@ -43,6 +43,7 @@ ALB_BASE_URL = os.environ["ALB_BASE_URL"]
 EVENT_TYPE = os.environ.get("EVENT_TYPE", "Object Created")
 MAX_TOKENS = 4096
 TOKENIZER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+ORIGIN_VERIFY_TOKEN = os.environ["ORIGIN_VERIFY_TOKEN"]
 
 log_info(
     "Ingestion script loaded",
@@ -79,7 +80,10 @@ def ensure_pgvector_extension():
 
 def update_document_status(status):
     url = f"{ALB_BASE_URL}/api/documents/{DOCUMENT_ID}"
-    headers = {"x-api-token": INGESTION_API_TOKEN}
+    headers = {
+        "x-api-token": INGESTION_API_TOKEN,
+        "X-Origin-Verify": ORIGIN_VERIFY_TOKEN,
+    }
     data = {"status": status}
 
     log_info(
