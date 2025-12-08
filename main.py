@@ -44,10 +44,7 @@ EVENT_TYPE = os.environ.get("EVENT_TYPE", "Object Created")
 MAX_TOKENS = 4096
 TOKENIZER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 ORIGIN_VERIFY_TOKEN = os.environ["ORIGIN_VERIFY_TOKEN"]
-log_info(
-    "This is my origin secret",
-    ORIGIN_VERIFY_TOKEN,
-)
+log_info(ORIGIN_VERIFY_TOKEN)
 
 log_info(
     "Ingestion script loaded",
