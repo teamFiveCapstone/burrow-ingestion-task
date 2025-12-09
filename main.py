@@ -128,6 +128,38 @@ def create_hybrid_chunker():
     return chunker
 
 
+def clean_node_metadata(nodes):
+    for idx, node in enumerate(nodes):
+        old_meta = node.metadata
+        clean_meta = {}
+
+        if "origin" in old_meta and "filename" in old_meta["origin"]:
+            clean_meta["file_name"] = old_meta["origin"]["filename"]
+
+        clean_meta["doc_id"] = DOCUMENT_ID
+        clean_meta["source"] = f"s3://{BUCKET_NAME}/{S3_KEY}"
+
+        if "doc_items" in old_meta and old_meta["doc_items"]:
+            first_item = old_meta["doc_items"][0]
+            if "prov" in first_item and first_item["prov"]:
+                clean_meta["page"] = first_item["prov"][0].get("page_no")
+            if "label" in first_item:
+                clean_meta["content_type"] = first_item["label"]  
+
+        clean_meta["chunk_index"] = idx
+        clean_meta["total_chunks"] = len(nodes)
+
+        node.metadata = clean_meta
+
+    log_info(
+        "Metadata cleaned",
+        document_id=DOCUMENT_ID,
+        sample=nodes[0].metadata if nodes else {},
+    )
+
+    return nodes
+
+
 def delete_embeddings_for_document():
     log_info(
         "Deleting embeddings for document",
@@ -233,6 +265,7 @@ def main():
     hybrid_chunker = create_hybrid_chunker()
     node_parser = DoclingNodeParser(chunker=hybrid_chunker)
     nodes = node_parser.get_nodes_from_documents(docs)
+    nodes = clean_node_metadata(nodes)  
     log_info(
         "Parsed document into nodes",
         document_id=DOCUMENT_ID,
