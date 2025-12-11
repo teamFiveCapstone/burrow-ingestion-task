@@ -1,18 +1,3 @@
-# /// script
-# requires-python = ">=3.12"
-# dependencies = [
-#     "boto3",
-#     "llama-index-core",
-#     "llama-index-embeddings-bedrock",
-#     "llama-index-readers-docling",
-#     "llama-index-node-parser-docling",
-#     "llama-index-vector-stores-postgres",
-#     "onnxruntime",
-#     "psycopg2-binary",
-#     "requests",
-#     "transformers",
-# ]
-# ///
 import os
 import boto3
 import psycopg2
@@ -144,7 +129,7 @@ def clean_node_metadata(nodes):
             if "prov" in first_item and first_item["prov"]:
                 clean_meta["page"] = first_item["prov"][0].get("page_no")
             if "label" in first_item:
-                clean_meta["content_type"] = first_item["label"]  
+                clean_meta["content_type"] = first_item["label"]
 
         clean_meta["chunk_index"] = idx
         clean_meta["total_chunks"] = len(nodes)
@@ -265,7 +250,7 @@ def main():
     hybrid_chunker = create_hybrid_chunker()
     node_parser = DoclingNodeParser(chunker=hybrid_chunker)
     nodes = node_parser.get_nodes_from_documents(docs)
-    nodes = clean_node_metadata(nodes)  
+    nodes = clean_node_metadata(nodes)
     log_info(
         "Parsed document into nodes",
         document_id=DOCUMENT_ID,

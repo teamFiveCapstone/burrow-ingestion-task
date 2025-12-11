@@ -1,0 +1,10 @@
+boto3
+llama-index-core
+llama-index-embeddings-bedrock
+llama-index-readers-docling
+llama-index-node-parser-docling
+llama-index-vector-stores-postgres
+onnxruntime
+psycopg2-binary
+requests
+transformers

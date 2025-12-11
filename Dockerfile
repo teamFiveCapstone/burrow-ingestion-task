@@ -8,8 +8,9 @@ RUN apt-get update \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py logger.py .
 
-CMD ["uv", "run", "main.py"]
+CMD ["python", "main.py"]
